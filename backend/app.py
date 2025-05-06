@@ -1,7 +1,19 @@
-import os
-os.environ["OPENAI_API_KEY"]="sk-"
-os.environ["TAVILY_API_KEY"]="tvly-"
+# import os
+# os.environ["OPENAI_API_KEY"]="sk-"
+# os.environ["TAVILY_API_KEY"]="tvly-"
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get API keys from environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
+# Validate that API keys are present
+if not OPENAI_API_KEY or not TAVILY_API_KEY:
+    raise ValueError("Missing required API keys. Please check your .env file.")
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
