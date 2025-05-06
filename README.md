@@ -82,20 +82,10 @@ MIR is an innovative AI-powered WhatsApp chatbot designed to empower Egyptian wo
 ## 📱 Usage
 
 1. Open the web interface at `http://localhost:3000`
-2. Connect your WhatsApp number through the interface
 3. Start chatting with the bot!
 
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- OpenAI for providing the language model capabilities
-- LangChain for the AI framework
-- FastAPI for the backend framework
-- React and Material-UI for the frontend components 
