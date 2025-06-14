@@ -5,12 +5,70 @@ from utils import now_utc_str
 from config import settings
 from integrations.whatsapp import send_text_message
 from agents.openai_agent import runnable_chain
+from agents.qroq_agent import MirAgent
 import traceback
+
+from langchain_core.messages import HumanMessage
+
 
 router = APIRouter()
 
 
-def enqueue_logs(user_id, text, reply, in_tokens, out_tokens):
+async def get_openai_response(text:str,session_id:str):
+    try:
+        # Invoke the AI chain for a response openai
+        result = await runnable_chain.ainvoke(
+            {"input": text},
+            {"configurable": {"session_id": session_id}}
+        )
+        reply = result["output"]
+        in_tokens = 10
+        out_tokens = 20
+
+        return {
+            "reply":reply,
+            "input_tokens":in_tokens,
+            "output_tokens":out_tokens
+        }
+    except Exception as e:
+        return  {
+            reply:f"Sorry We Have Tech Problem: {e}",
+            "input_tokens":0,
+            "output_tokens":0
+
+        }
+
+
+
+
+async def get_groq_response(text: str, session_id: str) -> str:
+    """
+    Call the Groq agent with user input and return the response.
+    """
+    try:
+        agent = MirAgent(session_id=session_id)
+        # get history from session id 
+        history = session_mgr.get_history(session_id).messages 
+        messages = history + [HumanMessage(content=text)]
+        response = await agent.ask(messages)
+        return {
+                    "reply":response.get("reply", ""),
+                    "input_tokens":response.get("input_tokens", 0),
+                    "output_tokens":response.get("output_tokens", 0)
+                }
+    except Exception as e:
+        return  {
+            "reply":f"Sorry We Have Tech Problem: {e}",
+            "input_tokens":0,
+            "output_tokens":0
+
+        }
+
+
+
+
+
+def enqueue_logs(user_id, text, reply, in_tokens, out_tokens,total_in_tokens=0, total_out_tokens=0):
     now = now_utc_str()
     # Queue user upsert (worker will write to Mongo)
     user_upsert_queue.put_nowait({
@@ -18,6 +76,9 @@ def enqueue_logs(user_id, text, reply, in_tokens, out_tokens):
         "name":       None,      # if you know the name, include it here
         "createdAt":  now,
         "lastSeenAt": now,
+        "totalInputTokens":  total_in_tokens,
+        "totalOutputTokens": total_out_tokens
+
     })
     # Queue chat logs
     chat_log_queue.put_nowait({
@@ -35,6 +96,7 @@ async def verify_webhook(request: Request):  # Facebook/WhatsApp verification
     params = request.query_params
     token = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
+    print(settings.whatsapp_verify_token, token)
     if token != settings.whatsapp_verify_token:
         return Response("Verification token mismatch", status_code=403)
     return Response(challenge, status_code=200)
@@ -68,32 +130,40 @@ async def handle_webhook(request: Request):
         return {"status": "error", "error": error_msg}
 
 
-    # Append incoming user message
-    session_mgr.append_message(external_id, "user", text)
+  
 
     try:
-        # Invoke the AI chain for a response
-        result = await runnable_chain.ainvoke(
-            {"input": text},
-            {"configurable": {"session_id": external_id}}
-        )
-        reply = result["output"]
-        in_tokens = 10
-        out_tokens = 20
-        print("agnet reply", reply)
+       # opernai_agnet 
+        # result = await get_openai_response(text, external_id)        
+        #grqoq_agent
+        result = await get_groq_response(text, external_id)
+        # Extract reply and token usage from the result
+
+        reply = result.get("reply", "")
+        in_tokens = result.get("input_tokens", 0)
+        out_tokens = result.get("output_tokens", 0)
+        
+
+         # Send WhatsApp reply
+        await send_text_message(external_id, reply)
+
+
+        # Append incoming user message
+        session_mgr.append_message(external_id, "user", text)
         # Record assistant reply and tokens
         session_mgr.append_message(external_id, "assistant", reply)
         session_mgr.add_tokens(
             external_id,
-            input_tokens=in_tokens,
-            output_tokens=out_tokens,
+            input_tokens=result.get("input_tokens", 0),
+            output_tokens=result.get("output_tokens", 0)
         )
 
         # Enqueue logs asynchronously
-        enqueue_logs(external_id, text, reply, in_tokens, out_tokens)
+        total_in_tokens = session_mgr.get(external_id)["totalInputTokens"]
+        total_out_tokens = session_mgr.get(external_id)["totalOutputTokens"]
+        enqueue_logs(external_id, text, reply, in_tokens, out_tokens,total_in_tokens=total_in_tokens, total_out_tokens=total_out_tokens)
 
-        # Send WhatsApp reply
-        await send_text_message(external_id, reply)
+       
 
         return {"status": "ok", "message_id": message_id}
 

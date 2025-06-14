@@ -16,7 +16,12 @@ def start_user_writer():
                             {"externalId": u["externalId"]},
                             {
                                 "$setOnInsert": {"createdAt": u["createdAt"]},
-                                "$set": {"name": u["name"], "lastSeenAt": u["lastSeenAt"]},
+                                "$set": {"name": u["name"], 
+                                         "lastSeenAt": u["lastSeenAt"],
+                                          "totalInputTokens": u.get("totalInputTokens", 0),
+                                        "totalOutputTokens": u.get("totalOutputTokens", 0),
+                                         
+                                         },
                             },
                             upsert=True
                         )
