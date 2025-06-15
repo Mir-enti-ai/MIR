@@ -1,0 +1,51 @@
+################################################
+### Task 1: Improve Session Handling with Summary Storage
+    * When a new message comes from a user:
+
+        * Check if they already have a session.
+        * If not, try to load their last summary from MongoDB.
+        * If found → create a session with that summary.
+        * If not → start a new empty session.
+
+    * While the session is active:
+
+        * Track the user's chat messages and token usage.
+        * Update their (lastActive) time.
+
+    * Every few minutes:
+
+        * Find sessions that have been inactive for over 30 minutes.
+        * For those sessions:
+
+            * Summarize the chat history using AI.
+            * Save the summary + token counts to MongoDB.
+            * Delete the session from memory.
+
+    * When that user sends a message again:
+
+        * Check MongoDB for the saved summary.
+        * Use it to restore their session and continue the conversation.
+
+
+
+################################################
+### Task 2: Reorder Async Workflow for Faster User Response
+
+    * When a new user message is received:
+
+        * Immediately generate and send the AI reply to the user .
+        * Do not waitfor session updates or logging before responding.
+
+    * After sending the reply:
+
+        * Run background tasks like:
+
+            * Adding the message and reply to the session history.
+            * Updating token usage.
+            * Logging the chat.
+            * Queuing user and chat updates for MongoDB.
+
+
+################################################
+### Task 3: Documentaions and make new branch
+
