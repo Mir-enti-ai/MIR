@@ -7,8 +7,5 @@ fastapi==0.115.12
 uvicorn==0.27.1
 python-dotenv==1.0.1
 websockets==12.0
-pymongo==4.13.1
-pymongo[srv]
-langchain-tavily
-langchain_groq
-langgraph
+
+
