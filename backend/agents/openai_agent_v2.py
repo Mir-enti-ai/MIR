@@ -1,11 +1,11 @@
 import os
-from langchain_groq import ChatGroq
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START
 from langgraph.prebuilt import tools_condition, ToolNode
 from langgraph.graph import MessagesState
 from langgraph.checkpoint.memory import MemorySaver
+from langchain_openai import ChatOpenAI
 
 os.environ["TAVILY_API_KEY"] = os.getenv("TAVILY_API_KEY", "").strip()
 os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY", "").strip()
@@ -134,12 +134,13 @@ class MirAgent:
         # Tools and LLM
         self.search_tool = TavilySearchResults(k=3)
         self.tools = [self.search_tool]
-        self.llm = ChatGroq(model="meta-llama/llama-4-maverick-17b-128e-instruct")
+        self.llm = ChatOpenAI(model="gpt-4.1", temperature=0.0)
         self.llm_with_tools = self.llm.bind_tools(self.tools, parallel_tool_calls=False)
         self.memory_saver = MemorySaver()
 
         # Build LangGraph agent
         def assistant(state: MessagesState):
+            print("Running assistant node with messages:", state["messages"],len(state["messages"]))
             return {"messages": [self.llm_with_tools.invoke([self.sys_msg] + state["messages"])]}
 
         builder = StateGraph(MessagesState)
@@ -151,7 +152,6 @@ class MirAgent:
         self.react_graph = builder.compile(checkpointer=self.memory_saver)
 
     async def ask(self, messages: str) -> dict:
-        print(messages)
         result = await self.react_graph.ainvoke(
             {"messages": messages},
             config={"configurable": {"thread_id": self.session_id}}

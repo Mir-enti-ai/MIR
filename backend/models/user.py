@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 from bson import ObjectId
-from datetime import datetime, timezone
 from typing import Optional
 from utils import now_utc_str
 # --- User model for the `users` collection ---

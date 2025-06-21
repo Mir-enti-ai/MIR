@@ -20,6 +20,7 @@ def start_user_writer():
                                          "lastSeenAt": u["lastSeenAt"],
                                           "totalInputTokens": u.get("totalInputTokens", 0),
                                         "totalOutputTokens": u.get("totalOutputTokens", 0),
+                                            "summary": u.get("summary", None),
                                          
                                          },
                             },
