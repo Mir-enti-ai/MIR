@@ -33,8 +33,26 @@ prompt = ChatPromptTemplate.from_messages(
 )
 
 # Build the runnable: prompt → LLM → string output
-summary_chain: Runnable = prompt | llm | StrOutputParser()
+summary_chain: Runnable = prompt | llm 
 
+def extract_basic(ai_msg):
+    """Return reply / token counts from an AIMessage."""
+    reply = ai_msg.content
+
+    # OpenAI v2 puts usage stats in response_metadata.token_usage
+    usage = (
+        getattr(ai_msg, "response_metadata", None) or {}
+    ).get("token_usage", {})
+
+    # OpenAI v1 style (usage_metadata) as fallback
+    if not usage and getattr(ai_msg, "usage_metadata", None):
+        usage = ai_msg.usage_metadata
+
+    return {
+        "reply":         reply,
+        "input_tokens":  usage.get("prompt_tokens",  0),
+        "output_tokens": usage.get("completion_tokens", 0),
+    }
 
 async def summarize(existing_summary: str, history_as_text: str) -> str:
     """Convenience wrapper that feeds the chain.
@@ -46,9 +64,18 @@ async def summarize(existing_summary: str, history_as_text: str) -> str:
     Returns:
         The updated summary produced by the LLM.
     """
-    return await summary_chain.ainvoke(
+    # Prepare the input for the summary chain
+    response = await summary_chain.ainvoke(
         {
             "existing_summary": [SystemMessage(content=existing_summary)] if existing_summary else [],
             "new_messages": [HumanMessage(content=history_as_text)],
         }
     )
+
+    # Extract the summary text from the response
+    result= extract_basic(response)
+    print(result)
+    return result
+
+
+

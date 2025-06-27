@@ -7,6 +7,7 @@ class OutboundMessage(BaseModel):
     body: str
 
 async def send_text_message(to_number: str, body: str) -> dict:
+    print(settings.whatsapp_token)
     url = f"https://graph.facebook.com/v22.0/{settings.whatsapp_phone_number_id}/messages"
     headers = {
         "Authorization": f"Bearer {settings.whatsapp_token}",

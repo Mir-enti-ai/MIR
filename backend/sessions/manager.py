@@ -130,13 +130,25 @@ class SessionManager:
         # Flatten recent messages
         history_text = "\n".join(f"{m.type}: {m.content}" for m in hist.messages)
 
-        new_summary = await summarizer(session["summary"], history_text)
+        result = await summarizer(session["summary"], history_text)
+        new_summary = result.get("reply","")
+        input_tokens = result.get("input_tokens", 0)
+        output_tokens = result.get("output_tokens", 0)
+
 
         # Keep the new summary; clear history and reset counters
         session["summary"] = new_summary
         session["history"] = ChatMessageHistory()
         session["unsummarisedInputTokens"] = 0
         session["unsummarisedOutputTokens"] = 0
+        
+        # add the tokens of the summary 
+        session["totalInputTokens"] += input_tokens
+        session["totalOutputTokens"] += output_tokens
+
+        print(f" the tokens of the summary are {input_tokens} input and {output_tokens} output")
+
+
         return new_summary
 
 

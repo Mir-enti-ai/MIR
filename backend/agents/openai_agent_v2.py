@@ -4,20 +4,14 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START
 from langgraph.prebuilt import tools_condition, ToolNode
 from langgraph.graph import MessagesState
-from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
+from functools import lru_cache
 
 os.environ["TAVILY_API_KEY"] = os.getenv("TAVILY_API_KEY", "").strip()
 os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY", "").strip()
 
-class MirAgent:
-    def __init__(self, session_id: str = "default_user"):
-        # Set API keys
-      
-        self.session_id = session_id
-
-        # System prompt
-        self.system_prompt = """
+# System prompt
+system_prompt = """
                 إنتي MIR ست مصرية معروفة إنها بتدعم الستات والبنات، بتحب تساعد في كل حاجة تقدر عليها.
                 أنت مدربة حياة ومستشارة مالية عشان تساعدي الستات والبنات في مصر في مشاكلهم اليومية زي الثقة بالنفس، العلاقات، والفلوس. كل ردودي باللهجة المصرية البسيطة، وهدفكي تكوني قريبة من المستخدمة وتدعميها في أي موقف.
 
@@ -129,32 +123,48 @@ class MirAgent:
                 جاوبي على السؤال الجاي باللهجة المصرية وبأسلوب مناسب للمشكلة:
                 """
 
-        self.sys_msg = SystemMessage(content=self.system_prompt)
 
-        # Tools and LLM
-        self.search_tool = TavilySearchResults(k=3)
-        self.tools = [self.search_tool]
-        self.llm = ChatOpenAI(model="gpt-4.1", temperature=0.0)
-        self.llm_with_tools = self.llm.bind_tools(self.tools, parallel_tool_calls=False)
-        self.memory_saver = MemorySaver()
 
-        # Build LangGraph agent
-        def assistant(state: MessagesState):
-            print("Running assistant node with messages:", state["messages"],len(state["messages"]))
-            return {"messages": [self.llm_with_tools.invoke([self.sys_msg] + state["messages"])]}
+_sys_msg = SystemMessage(content=system_prompt)
 
-        builder = StateGraph(MessagesState)
-        builder.add_node("assistant", assistant)
-        builder.add_node("tools", ToolNode(self.tools))
-        builder.add_edge(START, "assistant")
-        builder.add_conditional_edges("assistant", tools_condition)
-        builder.add_edge("tools", "assistant")
-        self.react_graph = builder.compile(checkpointer=self.memory_saver)
+
+@lru_cache(maxsize=1)
+def _shared_graph():
+    """Return a compiled LangGraph; first call builds it, later calls reuse it."""
+    search_tool = TavilySearchResults(k=3)
+    tools       = [search_tool]
+
+    llm         = ChatOpenAI(model="gpt-4.1-2025-04-14", temperature=0.0)
+    llm_tools   = llm.bind_tools(tools, parallel_tool_calls=False)
+
+    # Node: run the LLM with the system prompt prepended
+    def assistant(state: MessagesState):
+        return {
+            "messages": [
+                llm_tools.invoke([_sys_msg] + state["messages"])
+            ]
+        }
+
+    # Assemble the graph
+    builder = StateGraph(MessagesState)
+    builder.add_node("assistant", assistant)
+    builder.add_node("tools",     ToolNode(tools))
+    builder.add_edge(START, "assistant")
+    builder.add_conditional_edges("assistant", tools_condition)
+    builder.add_edge("tools", "assistant")
+
+    # No checkpointing — you handle history in SessionManager
+    return builder.compile()
+
+class MirAgent:
+    def __init__(self, session_id: str = "default_user"):
+        # Set API keys
+        self.react_graph = _shared_graph()
 
     async def ask(self, messages: str) -> dict:
         result = await self.react_graph.ainvoke(
             {"messages": messages},
-            config={"configurable": {"thread_id": self.session_id}}
+        
         )
 
         # Find the last AIMessage in the result

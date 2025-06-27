@@ -7,6 +7,7 @@ from routes.webhook import router as webhook_router
 from workers.user_writer import start_user_writer
 from workers.chat_logger import start_chat_logger
 from workers.session_pruner import start_session_pruner
+from agents.openai_agent_v2 import MirAgent   
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -14,6 +15,8 @@ async def lifespan(app: FastAPI):
     start_user_writer()         
     start_chat_logger()         
     start_session_pruner()
+    app.state.mir_agent = MirAgent()   
+
 
     # Give them a moment to spin up if needed
     await asyncio.sleep(0)

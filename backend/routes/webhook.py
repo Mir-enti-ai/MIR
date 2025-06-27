@@ -14,11 +14,9 @@ from sessions.manager import session_mgr
 from utils import now_utc_str
 from config import settings
 from integrations.whatsapp import send_text_message
-from agents.openai_agent_v2 import MirAgent
 from agents.summary_chain import summarize 
 from schemas.summary import load_session_summary
 from langchain_core.messages import HumanMessage,SystemMessage
-
 
 
 router = APIRouter()
@@ -26,7 +24,8 @@ router = APIRouter()
 # ─────────────────────────────────────────────────────────────────────────────
 # Utility wrapper around model back‑end (Groq/Llama‑v2 etc.)
 # ─────────────────────────────────────────────────────────────────────────────
-async def get_model_response(text: str, session_id: str):
+
+async def get_model_response(text: str, session_id: str,mir_agent):
     """
     Build the prompt as:
         1. SystemMessage containing the stored running summary (if any)
@@ -49,8 +48,7 @@ async def get_model_response(text: str, session_id: str):
         messages.append(HumanMessage(content=text))
 
         # Call the Groq agent
-        agent = MirAgent(session_id=session_id)
-        resp  = await agent.ask(messages)
+        resp  = await mir_agent.ask(messages)
 
         return {
             "reply":         resp.get("reply", ""),
@@ -65,6 +63,9 @@ async def get_model_response(text: str, session_id: str):
             "input_tokens":  0,
             "output_tokens": 0,
         }
+
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Background update task
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ async def handle_webhook(request: Request):
     print(f"Session for {external_id} exists: {session_mgr.exists(external_id)}")
 
     # 2) Get model reply
-    result = await get_model_response(user_text, external_id)
+    result = await get_model_response(user_text, external_id,request.app.state.mir_agent)
     assistant_reply = result["reply"]
     in_tokens = result["input_tokens"]
     out_tokens = result["output_tokens"]
