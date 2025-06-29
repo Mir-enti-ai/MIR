@@ -7,7 +7,7 @@ import os
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
-MODEL = "gpt-3.5-turbo"  # choose a low‑cost model for summarisation
+MODEL = "gpt-4.1-2025-04-14" 
 llm = ChatOpenAI(model_name=MODEL, temperature=0.2)
 
 # Arabic system instruction
@@ -54,7 +54,7 @@ def extract_basic(ai_msg):
         "output_tokens": usage.get("completion_tokens", 0),
     }
 
-async def summarize(existing_summary: str, history_as_text: str) -> str:
+async def summarize(existing_summary: str, history_as_text: str) -> dict:
     """Convenience wrapper that feeds the chain.
 
     Args:
