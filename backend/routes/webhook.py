@@ -54,6 +54,7 @@ async def get_model_response(text: str, session_id: str,mir_agent):
             "reply":         resp.get("reply", ""),
             "input_tokens":  resp.get("input_tokens", 0),
             "output_tokens": resp.get("output_tokens", 0),
+            "used_tools": resp.get("tools", []),
         }
 
     except Exception as e:
@@ -75,6 +76,7 @@ async def _background_after_reply(
     assistant_reply: str,
     in_tokens: int,
     out_tokens: int,
+    tools_used: list = None,
 ):
     try:
         
@@ -115,6 +117,7 @@ async def _background_after_reply(
                 "timestamp": now_str,
                 "inputTokens": in_tokens,
                 "outputTokens": out_tokens,
+                "usedTools": tools_used or [],
             }
         )
     except Exception as e:
@@ -176,8 +179,9 @@ async def handle_webhook(request: Request):
     assistant_reply = result["reply"]
     in_tokens = result["input_tokens"]
     out_tokens = result["output_tokens"]
+    tools_used = result.get("used_tools", [])
 
-    print(f"Reply for {external_id}: {assistant_reply} (input: {in_tokens}, output: {out_tokens})")
+    print(f"Reply for {external_id}: {assistant_reply} (input: {in_tokens}, output: {out_tokens}) using tools: {tools_used}")
 
     # 3) Send reply ASAP
     try:
@@ -195,6 +199,7 @@ async def handle_webhook(request: Request):
             assistant_reply,
             in_tokens,
             out_tokens,
+            tools_used=tools_used  
         )
     )
 

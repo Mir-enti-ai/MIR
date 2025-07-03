@@ -14,6 +14,7 @@ class ChatLog(BaseModel):
     input_tokens:  Optional[int] = Field(None, alias="inputTokens")
     output_tokens: Optional[int] = Field(None, alias="outputTokens")
     model:      Optional[str] = None
+    used_tools: Optional[list] = Field(None, alias="usedTools")
 
     model_config = {
         "populate_by_name":       True,

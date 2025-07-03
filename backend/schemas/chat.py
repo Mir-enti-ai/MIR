@@ -10,7 +10,8 @@ def log_message(
     user: str,
     input_tokens: int = None,
     output_tokens: int = None,
-    model: str = None
+    model: str = None,
+    used_tools: list = None
 ) -> ObjectId:
     entry = ChatLog(
         userId=user_id,
@@ -19,7 +20,9 @@ def log_message(
         timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         inputTokens=input_tokens,
         outputTokens=output_tokens,
-        model=model
+        model=model,
+        usedTools=used_tools
+        
     ).model_dump(by_alias=True, exclude_none=True)
     result = chat_logs_collection.insert_one(entry)
     return result.inserted_id
