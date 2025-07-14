@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from bson import ObjectId
 from config import chat_logs_collection
-from models.message import ChatLog
+from ..db_schemas import ChatLog
 
 def log_message(
     user_id: ObjectId,

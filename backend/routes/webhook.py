@@ -19,16 +19,15 @@ from utils import now_utc_str
 from config import settings
 from integrations.whatsapp import send_text_message
 from agents.summary_chain import summarize 
-from schemas.summary import load_session_summary
-
-
+from models import load_session_summary
+from .routes_utils import  parse_whatsapp_message,rapup_message
 router = APIRouter()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Utility wrapper around model back‑end (Groq/Llama‑v2 etc.)
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def get_model_response(text: str, session_id: str,mir_agent):
+async def get_model_response(parsed_message: HumanMessage, session_id: str,mir_agent):
     """
     function to call the MIR agent
     This function takes a user message and session ID, retrieves the session's
@@ -61,7 +60,7 @@ async def get_model_response(text: str, session_id: str,mir_agent):
                 content=f"ملخص سابق للمحادثة: {running_summary}"
             ))
         messages.extend(history_msgs)
-        messages.append(HumanMessage(content=text))
+        messages.append(parsed_message)
 
         # Call the mir agent
         resp  = await mir_agent.ask(messages)
@@ -152,6 +151,14 @@ async def _background_after_reply(user_id: str, user_text: str, assistant_reply:
     except Exception as e:
         print(f"[background_after_reply] failed for {user_id}: {e}\n{traceback.format_exc()}")
 
+
+
+
+
+
+
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Webhook endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,22 +198,28 @@ async def handle_webhook(request: Request):
     # 1) Extract message envelope
     try:
         change = payload["entry"][0]["changes"][0]["value"]
+
         if "messages" not in change:
             return {"status": "no_user_message"}
         msg = change["messages"][0]
+        print(msg)
         external_id = msg["from"]
-        user_text = msg.get("text", {}).get("body", "")
         message_id = msg.get("id", "")
-        print(f"Received message from {external_id}: {user_text} (ID: {message_id})")
+
+
+        # 1.1) Extract user message
+        result= await parse_whatsapp_message(message=msg)
+        human_message= await rapup_message(result)
+
+        
+       
+        print(f"Received message from {external_id} (ID: {human_message})")
    
    
     except (KeyError, IndexError, TypeError) as e:
         err = f"Malformed payload: {e}\n{traceback.format_exc()}"
         print(err)
         return {"status": "error", "error": err}
-
-    if not user_text:
-        return {"status": "no_text", "message_id": message_id}
 
     # 1.5) Restore or create session
     if not session_mgr.exists(external_id):
@@ -221,20 +234,16 @@ async def handle_webhook(request: Request):
         else:
             session_mgr.create(external_id)
 
-
-    print(f"Session for {external_id} exists: {session_mgr.exists(external_id)}")
-
     # 2) Get model reply
-    result = await get_model_response(user_text, external_id,request.app.state.mir_agent)
+    result = await get_model_response(parsed_message=human_message,session_id=external_id,mir_agent=request.app.state.mir_agent)
     assistant_reply = result["reply"]
     in_tokens = result["input_tokens"]
     out_tokens = result["output_tokens"]
     tools_used = result.get("used_tools", [])
 
-    print(f"Reply for {external_id}: {assistant_reply} (input: {in_tokens}, output: {out_tokens}) using tools: {tools_used}")
-
     # 3) Send reply ASAP
     try:
+        print(f"Sending reply to {external_id}: {assistant_reply}")
         await send_text_message(external_id, assistant_reply)
     except Exception as e:
         err = f"Failed to send message: {e}\n{traceback.format_exc()}"
@@ -245,7 +254,7 @@ async def handle_webhook(request: Request):
     asyncio.create_task(
         _background_after_reply(
             external_id,
-            user_text,
+            human_message.content, 
             assistant_reply,
             in_tokens,
             out_tokens,

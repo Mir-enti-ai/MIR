@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from sessions.manager import session_mgr
 from agents.summary_chain import summarize  # Arabic summariser
-from schemas.summary import save_session_summary
+from models import save_session_summary
 
 # Configuration (tweak in one place)
 SESSION_TIMEOUT = timedelta(minutes=30)

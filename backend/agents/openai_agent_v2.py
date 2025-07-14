@@ -12,10 +12,6 @@ from textwrap import shorten
 
 
 os.environ["TAVILY_API_KEY"] = os.getenv("TAVILY_API_KEY", "").strip()
-os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY", "").strip()
-
-
-# System prompt
 system_prompt = """
                 إنتي MIR ست مصرية معروفة إنها بتدعم الستات والبنات، بتحب تساعد في كل حاجة تقدر عليها.
                 أنت مدربة حياة ومستشارة مالية عشان تساعدي الستات والبنات في مصر في مشاكلهم اليومية زي الثقة بالنفس، العلاقات، والفلوس. كل ردودي باللهجة المصرية البسيطة، وهدفكي تكوني قريبة من المستخدمة وتدعميها في أي موقف.
@@ -207,8 +203,6 @@ def _shared_graph() :
         """
         model_response = await llm_tools.ainvoke([_sys_msg] + state["messages"])
 
-        print("Model response:", model_response)
-
         # ------------------------------------------------------------------
         # 1) Try the field you actually have: response_metadata.token_usage
         # ------------------------------------------------------------------
@@ -239,12 +233,6 @@ def _shared_graph() :
             in_tokens  = usage.get("prompt_tokens",     0)
             out_tokens = usage.get("completion_tokens", 0)
 
-
-        print("Token usage:", {
-            "input_tokens":  in_tokens,
-            "output_tokens": out_tokens,
-        })
-
         return {
             "messages":            [model_response],
             "total_input_tokens":   state["total_input_tokens"] + in_tokens,
@@ -265,7 +253,6 @@ def _shared_graph() :
             names.append(tool_call["name"])
 
             observation = await tool.ainvoke(tool_call["args"])
-            print(observation)
             results.append(
                 {
                     "role":          "tool",
@@ -276,7 +263,7 @@ def _shared_graph() :
 
         return {
             "messages":           results,
-            "called_tool_names":  names,           # LangGraph will auto-merge
+            "called_tool_names":  names,           
         }
 
     # ---------- EDGE DECIDER ----------
@@ -285,7 +272,6 @@ def _shared_graph() :
         If the last assistant message contains tool calls *other than* Done,
         route to tool handler; otherwise stop.
         """
-        print("Checking if we should continue...")
         last_msg = state["messages"][-1]
          # a) assistant made NO tool calls  → stop
         tool_calls = getattr(last_msg, "tool_calls", None)
