@@ -6,9 +6,13 @@ Key additions vs. previous version:
     • Saves condensed summary + token totals back to the same user doc when
       the prune loop in this file retires an idle session (code unchanged).
 """
-from fastapi import APIRouter, Request, Response
+
 import asyncio
 import traceback
+
+from fastapi import APIRouter, Request, Response
+from langchain_core.messages import HumanMessage,SystemMessage
+
 from workers.queues import user_upsert_queue, chat_log_queue
 from sessions.manager import session_mgr
 from utils import now_utc_str
@@ -16,7 +20,6 @@ from config import settings
 from integrations.whatsapp import send_text_message
 from agents.summary_chain import summarize 
 from schemas.summary import load_session_summary
-from langchain_core.messages import HumanMessage,SystemMessage
 
 
 router = APIRouter()
@@ -27,11 +30,24 @@ router = APIRouter()
 
 async def get_model_response(text: str, session_id: str,mir_agent):
     """
-    Build the prompt as:
-        1. SystemMessage containing the stored running summary (if any)
-        2. The detailed ChatMessageHistory
-        3. The new HumanMessage
-    Then call MirAgent and return reply + token counts.
+    function to call the MIR agent
+    This function takes a user message and session ID, retrieves the session's
+    history and summary of the user, constructs a message for the MIR agent, and returns the
+    agent's response along with token counts and any tools used.
+    
+    :param text: the user message to the agnet
+    :param session_id: the session id of the user (the phone number)
+    :param mir_agent: the MIR agent instance
+
+    :return: a dictionary containing the reply, input tokens, output tokens, and used tools
+
+    >>> get_model_response("Hello, how are you?", "1234567890", mir_agent)
+    {   
+        "reply": "Hello! I'm here to help you.",
+        "input_tokens": 10,
+        "output_tokens": 8,
+    }
+    
     """
     try:
         sess = session_mgr.get(session_id)
@@ -47,7 +63,7 @@ async def get_model_response(text: str, session_id: str,mir_agent):
         messages.extend(history_msgs)
         messages.append(HumanMessage(content=text))
 
-        # Call the Groq agent
+        # Call the mir agent
         resp  = await mir_agent.ask(messages)
 
         return {
@@ -63,6 +79,7 @@ async def get_model_response(text: str, session_id: str,mir_agent):
             "reply":         f"عذراً، حدث خطأ تقني: {e}",
             "input_tokens":  0,
             "output_tokens": 0,
+            "used_tools": [],
         }
 
 
@@ -70,14 +87,26 @@ async def get_model_response(text: str, session_id: str,mir_agent):
 # ─────────────────────────────────────────────────────────────────────────────
 # Background update task
 # ─────────────────────────────────────────────────────────────────────────────
-async def _background_after_reply(
-    user_id: str,
-    user_text: str,
-    assistant_reply: str,
-    in_tokens: int,
-    out_tokens: int,
-    tools_used: list = None,
-):
+async def _background_after_reply(user_id: str, user_text: str, assistant_reply: str, in_tokens: int, out_tokens: int,
+    tools_used: list = None):
+    """
+    function to update the session manager and queues after a reply has been sent.
+    This function appends the user and assistant messages to the session manager,
+    checks if a roll‑up is needed, and enqueues the user upsert and chat log
+    operations for later processing.
+    It also handles any exceptions that may occur during the process.
+
+    :param user_id: the ID of the user (the phone number)
+    :param user_text: the text of the user's message
+    :param assistant_reply: the reply from the assistant
+    :param in_tokens: the number of input tokens used
+    :param out_tokens: the number of output tokens used
+    :param tools_used: a list of tools used during the interaction (optional)
+    :return: None
+
+    >>> _background_after_reply("1234567890", "Hello", "Hi there!", 10, 5, ["tool1", "tool2"])    
+    
+    """
     try:
         
         # 1) update in‑memory session
@@ -128,6 +157,15 @@ async def _background_after_reply(
 # ─────────────────────────────────────────────────────────────────────────────
 @router.get("/webhook")
 async def verify_webhook(request: Request):
+    """
+    Endpoint to verify the webhook with WhatsApp.
+    This endpoint checks the verification token provided by WhatsApp
+    and returns the challenge if it matches the configured token.
+    :param request: The incoming request containing query parameters.
+    :return: A response containing the challenge if the token matches,
+             or a 403 Forbidden status if it does not.
+    """
+
     params = request.query_params
     if params.get("hub.verify_token") != settings.whatsapp_verify_token:
         return Response("Verification token mismatch", status_code=403)
@@ -136,6 +174,18 @@ async def verify_webhook(request: Request):
 
 @router.post("/webhook")
 async def handle_webhook(request: Request):
+    """
+    Endpoint to handle incoming WhatsApp messages.
+    This endpoint processes the incoming webhook request from WhatsApp,
+    extracts the message details, retrieves or creates a session for the user,
+    generates a reply using the model, sends the reply back to the user,
+    and performs background updates for session management and logging.
+
+    :param request: The incoming request containing the webhook payload.
+    :return: A response indicating the status of the operation.
+    
+    """
+
     payload = await request.json()
 
     # 1) Extract message envelope
